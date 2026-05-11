@@ -7,6 +7,7 @@ from pathlib import Path
 from core.overlays.motion_engine import MotionEngine
 from core.overlays.template_manager import TemplateManager
 from core.overlays.typography_engine import SocialTypographyRenderer
+from utils.logger import logger
 from models.text_overlay import TextOverlay
 
 
@@ -43,11 +44,18 @@ class TextEngine:
         temp_files: list[Path] | None = None,
     ) -> Path:
         template = self.templates.get(overlay.template)
-        key = (overlay.text, overlay.template, overlay.font_size, canvas_width, canvas_height)
+        computed_font_size = overlay.effective_font_size(canvas_height)
+        logger.debug(
+            "[NORMALIZED] font_ratio=%.4f output_height=%d computed_font_size=%d",
+            overlay.font_ratio,
+            canvas_height,
+            computed_font_size,
+        )
+        key = (overlay.text, overlay.template, computed_font_size, canvas_width, canvas_height)
         path = self._asset_cache.get(key)
         if path is None or not path.exists():
             path = self._new_asset_path()
-            self.typography.render_png(path, overlay.text, template, overlay.font_size, canvas_width, canvas_height)
+            self.typography.render_png(path, overlay.text, template, computed_font_size, canvas_width, canvas_height)
             self._asset_cache[key] = path
         if temp_files is not None and path not in temp_files:
             temp_files.append(path)

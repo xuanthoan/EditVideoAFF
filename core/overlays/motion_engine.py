@@ -89,11 +89,11 @@ class MotionEngine:
         if animation.preset == MotionPreset.SLIDE_DOWN:
             return base_x, f"-h+(({base_y})+h)*{slide_p}", enable
         if animation.preset in {MotionPreset.FLOAT, MotionPreset.DRIFT}:
-            return f"{base_x}+18*sin({local_t}*1.4)", f"{base_y}+12*cos({local_t}*1.1)", enable
+            return f"{base_x}+W*0.016*sin({local_t}*1.4)", f"{base_y}+H*0.010*cos({local_t}*1.1)", enable
         if animation.preset == MotionPreset.SHAKE:
-            return f"{base_x}+8*sin({local_t}*42)", f"{base_y}+6*cos({local_t}*55)", enable
+            return f"{base_x}+W*0.007*sin({local_t}*42)", f"{base_y}+H*0.005*cos({local_t}*55)", enable
         if animation.preset == MotionPreset.ELASTIC:
-            return base_x, f"{base_y}+28*sin(22*{local_t})*exp(-3*{local_t})", enable
+            return base_x, f"{base_y}+H*0.015*sin(22*{local_t})*exp(-3*{local_t})", enable
         return base_x, base_y, enable
 
     def alpha_filter(self, motion: MotionPreset, start: float = 0.0, end: float | None = None, duration: float = 0.35) -> str:
@@ -212,11 +212,11 @@ class MotionEngine:
         if preset == MotionPreset.SLIDE_DOWN:
             return 0.0, (-overlay_height - base_top) * (1 - slide_p)
         if preset in {MotionPreset.FLOAT, MotionPreset.DRIFT}:
-            return 18 * sin(local_t * 1.4), 12 * cos(local_t * 1.1)
+            return canvas_width * 0.016 * sin(local_t * 1.4), canvas_height * 0.010 * cos(local_t * 1.1)
         if preset == MotionPreset.SHAKE:
-            return 8 * sin(local_t * 42), 6 * cos(local_t * 55)
+            return canvas_width * 0.007 * sin(local_t * 42), canvas_height * 0.005 * cos(local_t * 55)
         if preset == MotionPreset.ELASTIC:
-            return 0.0, 28 * sin(22 * local_t) * pow(2.718281828, -3 * local_t)
+            return 0.0, canvas_height * 0.015 * sin(22 * local_t) * pow(2.718281828, -3 * local_t)
         return 0.0, 0.0
 
     def preview_rotation_delta(self, motion: MotionPreset | str, local_t: float) -> float:

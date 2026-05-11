@@ -18,6 +18,7 @@ from gui.mini_timeline import MiniTimeline, TimelineOverlayItem
 from gui.preview_canvas import PreviewCanvas
 from gui.queue_panel import QueuePanel
 from gui.workflow_panel import WorkflowPanel
+from core.normalized_layout_engine import NormalizedLayoutEngine
 from models.overlay import MotionPreset
 from models.project_state import ProjectState, WorkflowMode
 from models.sticker_overlay import StickerOverlay
@@ -222,6 +223,7 @@ if QMainWindow:
         def update_text_preview(self) -> None:
             self.state.overlays.text.template = self.workflow.template.currentText()
             self.state.overlays.text.font_size = self.workflow.font_size.value()
+            self.state.overlays.text.font_ratio = NormalizedLayoutEngine().normalize_font_size(self.state.overlays.text.font_size)
             self.state.overlays.text.motion = MotionPreset.from_label(self.workflow.motion.currentText())
             self.state.overlays.text.motion_speed = self.workflow._speed_value(self.workflow.motion_speed.currentText())
             mode = self.workflow.selected_workflow_mode()
@@ -233,6 +235,7 @@ if QMainWindow:
                 active,
                 self.state.overlays.text.motion.value,
                 self.state.overlays.text.motion_speed,
+                font_ratio=self.state.overlays.text.font_ratio,
             )
             self.preview.set_overlay_timing("text", self.state.overlays.text.start_time, self.state.overlays.text.end_time)
             self.preview.set_overlay_position("text", self.state.overlays.text.x, self.state.overlays.text.y)

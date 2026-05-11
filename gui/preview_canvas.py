@@ -69,9 +69,9 @@ if QLabel:
                 self._apply_scaled_pixmap()
             self.update()
 
-        def set_text_overlay(self, text: str, template: str, font_size: int, active: bool, motion: str = "None", speed: float = 1.0, strength: float = 1.0) -> None:
+        def set_text_overlay(self, text: str, template: str, font_size: int, active: bool, motion: str = "None", speed: float = 1.0, strength: float = 1.0, font_ratio: float | None = None) -> None:
             data = self._overlays["text"]
-            data.update({"text": text, "template": template, "font_size": font_size, "active": active, "motion": motion, "speed": speed, "strength": strength})
+            data.update({"text": text, "template": template, "font_size": font_size, "font_ratio": font_ratio, "active": active, "motion": motion, "speed": speed, "strength": strength})
             self.update()
 
         def set_sticker_overlay(self, path: Path | None, scale: float, rotation: float, active: bool, motion: str = "None", speed: float = 1.0, strength: float = 1.0) -> None:
@@ -178,12 +178,13 @@ if QLabel:
                 return
             template = self._template_manager.get(str(data["template"]))
             canvas = self._canvas_rect()
-            key = (str(data["text"]), str(data["template"]), int(data["font_size"]), round(canvas.width()), round(canvas.height()))
+            font_px = int(data["font_size"]) if data.get("font_ratio") is None else max(8, round(float(data["font_ratio"]) * canvas.height()))
+            key = (str(data["text"]), str(data["template"]), font_px, round(canvas.width()), round(canvas.height()))
             if key != self._text_pixmap_cache_key or self._text_pixmap_cache is None:
                 image = self._typography_renderer.render_image(
                     str(data["text"]),
                     template,
-                    int(data["font_size"]),
+                    font_px,
                     round(canvas.width()),
                     round(canvas.height()),
                 )
