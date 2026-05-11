@@ -49,6 +49,7 @@ if QWidget:
 
         def __init__(self) -> None:
             super().__init__()
+            self._ui_ready = False
             self.template_manager = TemplateManager()
             self.pipeline_group = QButtonGroup(self)
             self.pipeline_buttons: dict[WorkflowMode, QRadioButton] = {}
@@ -56,8 +57,10 @@ if QWidget:
                 button = QRadioButton(mode.value)
                 self.pipeline_buttons[mode] = button
                 self.pipeline_group.addButton(button)
-                button.toggled.connect(lambda _checked: self.apply_pipeline_ui_state())
-            self.pipeline_buttons[WorkflowMode.PIPELINE_1].setChecked(True)
+            default_button = self.pipeline_buttons[WorkflowMode.PIPELINE_1]
+            default_button.blockSignals(True)
+            default_button.setChecked(True)
+            default_button.blockSignals(False)
 
             self.scene_sensitivity = QSpinBox(); self.scene_sensitivity.setRange(10, 80); self.scene_sensitivity.setValue(30)
             self.fallback_min = QDoubleSpinBox(); self.fallback_min.setRange(1.0, 10.0); self.fallback_min.setValue(3.0); self.fallback_min.setSuffix("s")
@@ -105,7 +108,14 @@ if QWidget:
             for group in (self.pipeline_panel, self.shuffle_panel, self.image_panel, self.text_panel, self.sticker_panel):
                 layout.addWidget(group)
             layout.addStretch()
+
+            self._connect_signals()
+            self._ui_ready = True
             self.apply_pipeline_ui_state()
+
+        def _connect_signals(self) -> None:
+            for button in self.pipeline_buttons.values():
+                button.toggled.connect(lambda _checked: self.apply_pipeline_ui_state())
 
         def selected_workflow_mode(self) -> WorkflowMode:
             for mode, button in self.pipeline_buttons.items():
@@ -114,6 +124,16 @@ if QWidget:
             return WorkflowMode.PIPELINE_1
 
         def apply_pipeline_ui_state(self) -> None:
+            if not self._ui_ready:
+                return
+            if not hasattr(self, "shuffle_panel"):
+                return
+            if not hasattr(self, "image_panel"):
+                return
+            if not hasattr(self, "text_panel"):
+                return
+            if not hasattr(self, "sticker_panel"):
+                return
             config = PIPELINE_CONFIG[self.selected_workflow_mode()]
             self._set_panel_state(self.shuffle_panel, config["shuffle"])
             self._set_panel_state(self.image_panel, config["image"])
