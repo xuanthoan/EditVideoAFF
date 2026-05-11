@@ -129,6 +129,8 @@ if QMainWindow:
             self.workflow.template.currentTextChanged.connect(lambda _text: self.update_text_preview())
             self.workflow.font_size.valueChanged.connect(lambda _value: self.update_text_preview())
             self.workflow.motion.currentTextChanged.connect(lambda _text: self.update_text_preview())
+            self.workflow.motion_speed.currentTextChanged.connect(lambda _text: self._on_text_speed_changed())
+            self.workflow.sticker_speed.currentTextChanged.connect(lambda _text: self._on_sticker_speed_changed())
             self.workflow.changed.connect(self.sync_preview_panel_state)
             self.preview.overlayMoved.connect(self.set_overlay_position)
             self.timeline.playheadChanged.connect(self.set_playhead_time)
@@ -194,6 +196,18 @@ if QMainWindow:
             self.state.overlays.sticker.rotation = rotation
             self.state.overlays.sticker.motion = MotionPreset.from_label(motion)
             self.state.overlays.sticker.motion_speed = speed
+            self.update_sticker_preview()
+
+        def _on_text_speed_changed(self) -> None:
+            if self.workflow.speeds_linked() and self.workflow.sticker_speed.currentText() != self.workflow.motion_speed.currentText():
+                self.workflow.sticker_speed.setCurrentText(self.workflow.motion_speed.currentText())
+            self.update_text_preview()
+            self.update_sticker_preview()
+
+        def _on_sticker_speed_changed(self) -> None:
+            if self.workflow.speeds_linked() and self.workflow.motion_speed.currentText() != self.workflow.sticker_speed.currentText():
+                self.workflow.motion_speed.setCurrentText(self.workflow.sticker_speed.currentText())
+            self.update_text_preview()
             self.update_sticker_preview()
 
         def set_overlay_position(self, kind: str, x: float, y: float) -> None:

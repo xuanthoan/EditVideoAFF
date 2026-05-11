@@ -9,6 +9,7 @@ try:
     from PySide6.QtWidgets import (
         QButtonGroup,
         QComboBox,
+        QCheckBox,
         QDoubleSpinBox,
         QFileDialog,
         QFormLayout,
@@ -24,7 +25,7 @@ try:
     )
 except ImportError:
     Signal = QColor = QIcon = QPainter = QPen = QPixmap = None
-    QButtonGroup = QComboBox = QDoubleSpinBox = QFileDialog = QFormLayout = QGraphicsOpacityEffect = None
+    QButtonGroup = QCheckBox = QComboBox = QDoubleSpinBox = QFileDialog = QFormLayout = QGraphicsOpacityEffect = None
     QGroupBox = QListWidget = QPushButton = QRadioButton = QSpinBox = QTextEdit = QVBoxLayout = QWidget = None
 
 from core.overlays.template_manager import TemplateManager, TextTemplate
@@ -79,6 +80,8 @@ if QWidget:
             self.font_size = QSpinBox(); self.font_size.setRange(18, 260); self.font_size.setValue(96)
             self.motion = QComboBox(); self.motion.addItems(["None", "Fade In", "Fade Out", "Pop", "Bounce", "Scale", "Scale Up", "Scale Down", "Float", "Slide Left", "Slide Right", "Slide Up", "Slide Down", "Pulse", "Shake"])
             self.motion_speed = QComboBox(); self.motion_speed.addItems(["0.25x", "0.5x", "0.75x", "1.0x", "1.25x", "1.5x", "2.0x", "3.0x"]); self.motion_speed.setCurrentText("1.0x")
+            self.link_motion_speed = QCheckBox("Link Text & Sticker Speed")
+            self.link_motion_speed.setChecked(False)
 
             self.sticker_scale = QDoubleSpinBox(); self.sticker_scale.setRange(0.05, 0.45); self.sticker_scale.setSingleStep(0.01); self.sticker_scale.setDecimals(2); self.sticker_scale.setValue(0.16); self.sticker_scale.setSuffix(" canvas")
             self.sticker_rotation = QSpinBox(); self.sticker_rotation.setRange(-360, 360); self.sticker_rotation.setValue(0); self.sticker_rotation.setSuffix("°")
@@ -95,6 +98,7 @@ if QWidget:
             self.sticker_rotation.valueChanged.connect(lambda _value: self.emit_sticker_controls())
             self.sticker_motion.currentTextChanged.connect(lambda _text: self.emit_sticker_controls())
             self.sticker_speed.currentTextChanged.connect(lambda _text: self.emit_sticker_controls())
+            self.motion_speed.currentTextChanged.connect(lambda _text: self.changed.emit())
             self.image_height.valueChanged.connect(lambda _value: self._clamp_overlap())
 
             layout = QVBoxLayout(self)
@@ -221,6 +225,7 @@ if QWidget:
             form.addRow("Font", self.font_size)
             form.addRow("Motion", self.motion)
             form.addRow("Speed", self.motion_speed)
+            form.addRow("", self.link_motion_speed)
             return group
 
         def _sticker_group(self, button):
@@ -235,6 +240,9 @@ if QWidget:
 
         def emit_sticker_controls(self) -> None:
             self.stickerControlsChanged.emit(float(self.sticker_scale.value()), float(self.sticker_rotation.value()), self.sticker_motion.currentText(), self._speed_value(self.sticker_speed.currentText()))
+
+        def speeds_linked(self) -> bool:
+            return bool(self.link_motion_speed.isChecked())
 
         def pick_images(self) -> None:
             files, _ = QFileDialog.getOpenFileNames(self, "Image pool", "", "Images (*.png *.jpg *.jpeg *.webp)")
