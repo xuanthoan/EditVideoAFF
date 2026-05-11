@@ -47,6 +47,8 @@ if QWidget:
         stickerSelected = Signal(str)
         stickerControlsChanged = Signal(float, float, str, float)
         textChanged = Signal(str)
+        generateAutoSegmentsClicked = Signal()
+        previewShuffleOrderClicked = Signal()
 
         def __init__(self) -> None:
             super().__init__()
@@ -90,8 +92,12 @@ if QWidget:
 
             sticker_button = QPushButton("Chọn sticker")
             image_button = QPushButton("Chọn ảnh (multi-select)")
+            self.generate_segments_button = QPushButton("Generate Auto Segments")
+            self.preview_shuffle_button = QPushButton("Preview Shuffle Order")
             image_button.clicked.connect(self.pick_images)
             sticker_button.clicked.connect(self.pick_sticker)
+            self.generate_segments_button.clicked.connect(self.generateAutoSegmentsClicked.emit)
+            self.preview_shuffle_button.clicked.connect(self.previewShuffleOrderClicked.emit)
 
             self.text.textChanged.connect(lambda: self.textChanged.emit(self.text.toPlainText()))
             self.sticker_scale.valueChanged.connect(lambda _value: self.emit_sticker_controls())
@@ -204,6 +210,8 @@ if QWidget:
             form.addRow("Sensitivity", self.scene_sensitivity)
             form.addRow("Fallback min", self.fallback_min)
             form.addRow("Fallback max", self.fallback_max)
+            form.addRow(self.generate_segments_button)
+            form.addRow(self.preview_shuffle_button)
             return group
 
         def _image_group(self, button):

@@ -14,6 +14,8 @@ except ImportError:
 
 from core.renderer.batch_renderer import BatchRenderer
 from core.renderer.preview_renderer import PreviewRenderer
+from core.video.scene_detector import SceneDetector
+from core.video.segmenter import Segmenter
 from gui.mini_timeline import MiniTimeline, TimelineOverlayItem
 from gui.preview_canvas import PreviewCanvas
 from gui.queue_panel import QueuePanel
@@ -133,6 +135,8 @@ if QMainWindow:
             self.workflow.motion_speed.currentTextChanged.connect(lambda _text: self._on_text_speed_changed())
             self.workflow.sticker_speed.currentTextChanged.connect(lambda _text: self._on_sticker_speed_changed())
             self.workflow.changed.connect(self.sync_preview_panel_state)
+            self.workflow.generateAutoSegmentsClicked.connect(self.generate_auto_segments)
+            self.workflow.previewShuffleOrderClicked.connect(self.preview_shuffle_order)
             self.preview.overlayMoved.connect(self.set_overlay_position)
             self.timeline.playheadChanged.connect(self.set_playhead_time)
             self.timeline.overlayTimingChanged.connect(self.set_overlay_timing)
@@ -289,6 +293,39 @@ if QMainWindow:
             self.update_text_preview()
             self.update_sticker_preview()
             self.refresh_timeline()
+
+        def generate_auto_segments(self) -> None:
+            current_item = self.queue.list.currentItem() if hasattr(self.queue, "list") else None
+            video_path = Path(current_item.text()) if current_item is not None else None
+            if not video_path:
+                if self.state.videos:
+                    video_path = self.state.videos[0]
+                else:
+                    self.append_log("[WARNING] Chưa có video để generate segments.")
+                    return
+            try:
+                detector = SceneDetector()
+                scenes = detector.detect(Path(video_path), self.state.scene_shuffle.sensitivity)
+                segments = Segmenter(
+                    self.state.scene_shuffle.fallback_min_seconds,
+                    self.state.scene_shuffle.fallback_max_seconds,
+                ).ensure_segments(scenes, Path(video_path))
+                self.state.scene_shuffle.auto_segments = [(segment.start, segment.end) for segment in segments]
+                if not self.state.scene_shuffle.manual_segments:
+                    self.append_log(f"[INFO] Generated {len(segments)} auto segments.")
+                else:
+                    self.append_log("[INFO] Auto segments generated (manual mode currently active).")
+            except Exception as exc:
+                self.append_log(f"[ERROR] Generate auto segments failed: {exc}")
+
+        def preview_shuffle_order(self) -> None:
+            segments = self.state.scene_shuffle.active_segments()
+            if not segments:
+                self.append_log("[INFO] Chưa có segments. Bấm Generate Auto Segments trước.")
+                return
+            order = ", ".join(f"{idx + 1}:{start:.2f}-{end:.2f}" for idx, (start, end) in enumerate(segments))
+            mode = "MANUAL" if self.state.scene_shuffle.use_manual_segments else "AUTO"
+            self.append_log(f"[INFO] Preview Shuffle Order ({mode}): {order}")
 
         def _overlay_by_key(self, key: str):
             if key == "text":
