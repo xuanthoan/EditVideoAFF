@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import re
 import subprocess
 from collections.abc import Callable
 from datetime import datetime
@@ -81,6 +82,7 @@ class BatchRenderer:
                 self._log(log, "INFO", "Exporting final video...")
                 render_state = self._state_for_video(state)
                 cmd = self.manager.build_command(video, temp_output, render_state, original_audio_path=original_audio_path)
+                cmd = self._sanitize_filtergraph(cmd, log)
                 self._log_debug_events(log)
                 if render_state.export.developer_mode:
                     self._write_debug_filtergraph(cmd, output, log)
@@ -230,3 +232,19 @@ class BatchRenderer:
         if log:
             timestamp = datetime.now().strftime("%H:%M:%S")
             log(f"[{timestamp}] [{level}] {message}")
+
+    def _sanitize_filtergraph(self, cmd: list[str], log: LogCallback | None) -> list[str]:
+        if "-filter_complex" not in cmd:
+            return cmd
+        index = cmd.index("-filter_complex") + 1
+        graph = cmd[index]
+        original = graph
+        graph = re.sub(r"(rotate=[^;]*?):eval=frame", r"\1", graph)
+        graph = re.sub(r"(scale=[^;]*?):eval=frame", r"\1", graph)
+        graph = re.sub(r"(crop=[^;]*?):eval=frame", r"\1", graph)
+        graph = re.sub(r"(format=[^;]*?):eval=frame", r"\1", graph)
+        graph = re.sub(r"(geq=[^;]*?):eval=frame", r"\1", graph)
+        if graph != original:
+            self._log(log, "WARNING", "Removed unsupported eval options from non-overlay filters.")
+            cmd[index] = graph
+        return cmd

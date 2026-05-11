@@ -19,10 +19,9 @@ class StickerEngine:
         alpha_filter = self.motion.alpha_filter(transform.motion, transform.start_time, transform.end_time, transform.speed)
         rotation_expr = self.motion.rotation_expr(overlay.rotation, transform.motion, transform.start_time, transform.speed)
         chain = (
-            f"[{sticker_label}]scale=w='{width_expr}':h='{height_expr}':eval=frame,"
-            f"rotate='{rotation_expr}':ow=rotw(iw):oh=roth(ih):c=none:eval=frame"
+            f"[{sticker_label}]scale=w='{width_expr}':h='{height_expr}',"
+            f"rotate='{rotation_expr}':ow=rotw(iw):oh=roth(ih):c=none"
             f"{alpha_filter}[{prepared}];"
             f"[{video_label}][{prepared}]overlay=x={x}:y={y}:eval=frame:enable='{enable}'[{out}]"
         )
         return chain, out
-
