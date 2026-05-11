@@ -7,6 +7,7 @@ recursive framebuffer/sticker rendering bugs.
 """
 from __future__ import annotations
 
+from core.motion_engine import FFmpegExpressionBuilder, MotionEvaluator, PreviewTransformEvaluator
 from dataclasses import dataclass
 from math import cos, sin
 
@@ -46,7 +47,7 @@ class MotionEngine:
     @staticmethod
     def _e(value: str) -> str:
         """Escape expression commas for FFmpeg filtergraph option values."""
-        return value.replace(",", r"\,")
+        return FFmpegExpressionBuilder._e(value)
 
     @staticmethod
     def _clip01_raw(value: str) -> str:
@@ -57,8 +58,8 @@ class MotionEngine:
         return MotionEngine._e(MotionEngine._clip01_raw(value))
 
     @staticmethod
-    def local_time(start: float = 0.0) -> str:
-        return f"(t-{max(0.0, float(start)):.3f})"
+    def local_time(start: float = 0.0, speed: float = 1.0) -> str:
+        return FFmpegExpressionBuilder.local_time(start, speed)
 
     def animation(self, motion: MotionPreset | str, start: float = 0.0, end: float | None = None) -> OverlayAnimation:
         start = max(0.0, float(start))
@@ -176,41 +177,15 @@ class MotionEngine:
         fade_duration: float = 0.35,
     ) -> float:
         preset = self._preset(motion)
-        fade_duration = max(fade_duration, 0.05)
-        if preset in {MotionPreset.FADE, MotionPreset.FADE_IN}:
-            return min(max(local_t / fade_duration, 0.0), 1.0)
-        if preset == MotionPreset.FADE_OUT:
-            duration = max(float(overlay_duration), fade_duration) if overlay_duration is not None else fade_duration
-            fade_t = local_t - max(duration - fade_duration, 0.0)
-            return 1.0 - min(max(fade_t / fade_duration, 0.0), 1.0)
-        return 1.0
+        duration = max(float(overlay_duration or 3.0), 0.1)
+        spec = MotionEvaluator.resolve(preset, 0.0, duration)
+        return PreviewTransformEvaluator.state_for_time(spec, local_t).opacity
 
     def preview_scale(self, motion: MotionPreset | str, local_t: float, overlay_duration: float | None = None) -> float:
         preset = self._preset(motion)
         duration = max(float(overlay_duration or 3.0), 0.1)
-        if preset in {MotionPreset.POP, MotionPreset.ZOOM}:
-            if local_t < 0:
-                return 0.80
-            if local_t < 0.15:
-                return 0.80 + 0.40 * min(max(local_t / 0.15, 0.0), 1.0)
-            if local_t < 0.30:
-                return 1.20 - 0.20 * min(max((local_t - 0.15) / 0.15, 0.0), 1.0)
-            return 1.0
-        if preset == MotionPreset.BOUNCE:
-            if local_t < 0:
-                return 0.85
-            if local_t < 0.25:
-                return 0.85 + 0.23 * min(max(local_t / 0.25, 0.0), 1.0)
-            if local_t < 0.55:
-                return 1.08 - 0.08 * min(max((local_t - 0.25) / 0.30, 0.0), 1.0)
-            return 1.0
-        if preset in {MotionPreset.SCALE, MotionPreset.SCALE_UP}:
-            return 1.0 + 0.15 * min(max(local_t / duration, 0.0), 1.0)
-        if preset == MotionPreset.SCALE_DOWN:
-            return 1.15 - 0.15 * min(max(local_t / duration, 0.0), 1.0)
-        if preset == MotionPreset.PULSE:
-            return 1.0 + 0.05 * sin(local_t * 8)
-        return 1.0
+        spec = MotionEvaluator.resolve(preset, 0.0, duration)
+        return PreviewTransformEvaluator.state_for_time(spec, local_t).scale
 
     def preview_offset(
         self,
@@ -244,9 +219,8 @@ class MotionEngine:
         return 0.0, 0.0
 
     def preview_rotation_delta(self, motion: MotionPreset | str, local_t: float) -> float:
-        if self._preset(motion) == MotionPreset.ROTATE_FLOAT:
-            return 8 * sin(local_t * 3)
-        return 0.0
+        spec = MotionEvaluator.resolve(self._preset(motion), 0.0, max(local_t + 0.1, 0.1))
+        return PreviewTransformEvaluator.state_for_time(spec, local_t).rotation_delta_deg
 
     def alpha_expr(self, motion: MotionPreset, duration: float) -> str:
         # Kept for compatibility with older tests/callers; prefer alpha_filter().
