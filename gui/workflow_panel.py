@@ -44,7 +44,7 @@ if QWidget:
         changed = Signal()
         imagePoolSelected = Signal(list)
         stickerSelected = Signal(str)
-        stickerControlsChanged = Signal(float, float, str)
+        stickerControlsChanged = Signal(float, float, str, float)
         textChanged = Signal(str)
 
         def __init__(self) -> None:
@@ -75,10 +75,12 @@ if QWidget:
             self._populate_template_combo()
             self.font_size = QSpinBox(); self.font_size.setRange(18, 260); self.font_size.setValue(96)
             self.motion = QComboBox(); self.motion.addItems(["None", "Fade In", "Fade Out", "Pop", "Bounce", "Scale", "Scale Up", "Scale Down", "Float", "Slide Left", "Slide Right", "Slide Up", "Slide Down", "Pulse", "Shake"])
+            self.motion_speed = QComboBox(); self.motion_speed.addItems(["0.25x", "0.5x", "0.75x", "1.0x", "1.25x", "1.5x", "2.0x", "3.0x"]); self.motion_speed.setCurrentText("1.0x")
 
             self.sticker_scale = QDoubleSpinBox(); self.sticker_scale.setRange(0.05, 0.45); self.sticker_scale.setSingleStep(0.01); self.sticker_scale.setDecimals(2); self.sticker_scale.setValue(0.16); self.sticker_scale.setSuffix(" canvas")
             self.sticker_rotation = QSpinBox(); self.sticker_rotation.setRange(-360, 360); self.sticker_rotation.setValue(0); self.sticker_rotation.setSuffix("°")
             self.sticker_motion = QComboBox(); self.sticker_motion.addItems(["None", "Fade In", "Fade Out", "Pop", "Bounce", "Scale", "Scale Up", "Scale Down", "Float", "Slide Left", "Slide Right", "Slide Up", "Slide Down", "Pulse", "Shake", "Rotate Float"])
+            self.sticker_speed = QComboBox(); self.sticker_speed.addItems(["0.25x", "0.5x", "0.75x", "1.0x", "1.25x", "1.5x", "2.0x", "3.0x"]); self.sticker_speed.setCurrentText("1.0x")
 
             sticker_button = QPushButton("Chọn sticker")
             image_button = QPushButton("Chọn ảnh (multi-select)")
@@ -89,6 +91,7 @@ if QWidget:
             self.sticker_scale.valueChanged.connect(lambda _value: self.emit_sticker_controls())
             self.sticker_rotation.valueChanged.connect(lambda _value: self.emit_sticker_controls())
             self.sticker_motion.currentTextChanged.connect(lambda _text: self.emit_sticker_controls())
+            self.sticker_speed.currentTextChanged.connect(lambda _text: self.emit_sticker_controls())
             self.image_height.valueChanged.connect(lambda _value: self._clamp_overlap())
 
             layout = QVBoxLayout(self)
@@ -197,6 +200,7 @@ if QWidget:
             form.addRow("Template", self.template)
             form.addRow("Font", self.font_size)
             form.addRow("Motion", self.motion)
+            form.addRow("Speed", self.motion_speed)
             return group
 
         def _sticker_group(self, button):
@@ -206,10 +210,11 @@ if QWidget:
             form.addRow("Scale", self.sticker_scale)
             form.addRow("Rotation", self.sticker_rotation)
             form.addRow("Motion", self.sticker_motion)
+            form.addRow("Speed", self.sticker_speed)
             return group
 
         def emit_sticker_controls(self) -> None:
-            self.stickerControlsChanged.emit(float(self.sticker_scale.value()), float(self.sticker_rotation.value()), self.sticker_motion.currentText())
+            self.stickerControlsChanged.emit(float(self.sticker_scale.value()), float(self.sticker_rotation.value()), self.sticker_motion.currentText(), self._speed_value(self.sticker_speed.currentText()))
 
         def pick_images(self) -> None:
             files, _ = QFileDialog.getOpenFileNames(self, "Image pool", "", "Images (*.png *.jpg *.jpeg *.webp)")
@@ -224,6 +229,13 @@ if QWidget:
 
         def _clamp_overlap(self) -> None:
             self.overlap.setMaximum(min(20, self.image_height.value()))
+
+        def _speed_value(self, text: str) -> float:
+            try:
+                return float(str(text).replace("x", ""))
+            except ValueError:
+                return 1.0
+
 else:
     class WorkflowPanel:  # type: ignore[no-redef]
         pass

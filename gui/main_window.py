@@ -182,16 +182,18 @@ if QMainWindow:
                 float(self.workflow.sticker_scale.value()),
                 float(self.workflow.sticker_rotation.value()),
                 self.workflow.sticker_motion.currentText(),
+                self.workflow._speed_value(self.workflow.sticker_speed.currentText()),
             )
             self.state.overlays.sticker_enabled = True
             self.update_sticker_preview()
             self.refresh_timeline()
             self.append_log(f"[INFO] Đã chọn sticker: {Path(path).name}")
 
-        def set_sticker_controls(self, scale: float, rotation: float, motion: str) -> None:
+        def set_sticker_controls(self, scale: float, rotation: float, motion: str, speed: float = 1.0) -> None:
             self.state.overlays.sticker.scale = scale
             self.state.overlays.sticker.rotation = rotation
             self.state.overlays.sticker.motion = MotionPreset.from_label(motion)
+            self.state.overlays.sticker.motion_speed = speed
             self.update_sticker_preview()
 
         def set_overlay_position(self, kind: str, x: float, y: float) -> None:
@@ -207,6 +209,7 @@ if QMainWindow:
             self.state.overlays.text.template = self.workflow.template.currentText()
             self.state.overlays.text.font_size = self.workflow.font_size.value()
             self.state.overlays.text.motion = MotionPreset.from_label(self.workflow.motion.currentText())
+            self.state.overlays.text.motion_speed = self.workflow._speed_value(self.workflow.motion_speed.currentText())
             mode = self.workflow.selected_workflow_mode()
             active = mode in {WorkflowMode.PIPELINE_2, WorkflowMode.PIPELINE_3, WorkflowMode.PIPELINE_4} and self.state.overlays.text.active
             self.preview.set_text_overlay(
@@ -215,6 +218,7 @@ if QMainWindow:
                 self.state.overlays.text.font_size,
                 active,
                 self.state.overlays.text.motion.value,
+                self.state.overlays.text.motion_speed,
             )
             self.preview.set_overlay_timing("text", self.state.overlays.text.start_time, self.state.overlays.text.end_time)
             self.preview.set_overlay_position("text", self.state.overlays.text.x, self.state.overlays.text.y)
@@ -228,6 +232,7 @@ if QMainWindow:
                 self.state.overlays.sticker.rotation,
                 active,
                 self.state.overlays.sticker.motion.value,
+                self.state.overlays.sticker.motion_speed,
             )
             self.preview.set_overlay_timing("sticker", self.state.overlays.sticker.start_time, self.state.overlays.sticker.end_time)
             self.preview.set_overlay_position("sticker", self.state.overlays.sticker.x, self.state.overlays.sticker.y)
@@ -360,10 +365,12 @@ if QMainWindow:
             self.state.overlays.text.template = self.workflow.template.currentText()
             self.state.overlays.text.font_size = self.workflow.font_size.value()
             self.state.overlays.text.motion = MotionPreset.from_label(self.workflow.motion.currentText())
+            self.state.overlays.text.motion_speed = self.workflow._speed_value(self.workflow.motion_speed.currentText())
             self.set_sticker_controls(
                 float(self.workflow.sticker_scale.value()),
                 float(self.workflow.sticker_rotation.value()),
                 self.workflow.sticker_motion.currentText(),
+                self.workflow._speed_value(self.workflow.sticker_speed.currentText()),
             )
 
         def append_log(self, message: str) -> None:

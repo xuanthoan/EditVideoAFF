@@ -66,7 +66,7 @@ class MotionEngine:
         resolved_end = max(start + 0.1, float(end)) if end is not None else start + 3.0
         return OverlayAnimation(preset=self._preset(motion), start=start, end=resolved_end)
 
-    def position_expr(self, x: float, y: float, motion: MotionPreset, start: float, end: float) -> tuple[str, str, str]:
+    def position_expr(self, x: float, y: float, motion: MotionPreset, start: float, end: float, speed: float = 1.0) -> tuple[str, str, str]:
         """Return top-left overlay expressions in final-canvas space.
 
         Expressions are evaluated by FFmpeg's overlay filter per frame. The base
@@ -77,7 +77,7 @@ class MotionEngine:
         base_x = f"W*{x:.4f}-w/2"
         base_y = f"H*{y:.4f}-h/2"
         enable = f"between(t,{animation.start:.3f},{animation.end:.3f})"
-        local_t = animation.local_t
+        local_t = self.local_time(start, speed)
         slide_p = self._clip01_expr(f"{local_t}/{animation.slide_duration:.3f}")
 
         if animation.preset in {MotionPreset.SLIDE, MotionPreset.SLIDE_LEFT}:
@@ -113,9 +113,9 @@ class MotionEngine:
             return f",format=rgba,fade=t=out:st={fade_start:.3f}:d={duration:.3f}:alpha=1"
         return ",format=rgba"
 
-    def _scale_factor_expr(self, motion: MotionPreset, start: float = 0.0, end: float | None = None) -> str:
+    def _scale_factor_expr(self, motion: MotionPreset, start: float = 0.0, end: float | None = None, speed: float = 1.0) -> str:
         animation = self.animation(motion, start, end)
-        local_t = animation.local_t
+        local_t = self.local_time(start, speed)
         duration = animation.duration
         progress = self._clip01_expr(f"{local_t}/{duration:.3f}")
         pop_up = self._clip01_raw(f"{local_t}/0.150")
@@ -152,9 +152,10 @@ class MotionEngine:
         start: float = 0.0,
         end: float | None = None,
         base_height: str = "-1",
+        speed: float = 1.0,
     ) -> tuple[str, str]:
         """Return dynamic region scale expressions for `scale=eval=frame`."""
-        factor = self._scale_factor_expr(motion, start, end)
+        factor = self._scale_factor_expr(motion, start, end, speed)
         if factor == "1.00":
             return base_width, base_height
         width = f"({base_width})*({factor})"
@@ -162,9 +163,9 @@ class MotionEngine:
             return width, "-1"
         return width, f"({base_height})*({factor})"
 
-    def rotation_expr(self, base_degrees: float, motion: MotionPreset | str, start: float = 0.0) -> str:
+    def rotation_expr(self, base_degrees: float, motion: MotionPreset | str, start: float = 0.0, speed: float = 1.0) -> str:
         preset = self._preset(motion)
-        local_t = self.local_time(start)
+        local_t = self.local_time(start, speed)
         if preset == MotionPreset.ROTATE_FLOAT:
             return f"({float(base_degrees):.4f}+8*sin({local_t}*3))*PI/180"
         return f"{float(base_degrees):.4f}*PI/180"
@@ -230,6 +231,6 @@ class MotionEngine:
             return f"if(gt(t,{max(duration - 0.35, 0):.3f}),max(0,({duration:.3f}-t)/0.35),1)"
         return "1"
 
-    def sticker_scale_expr(self, scale_ratio: float, motion: MotionPreset, canvas_width: int, start: float = 0.0, end: float | None = None) -> tuple[str, str]:
+    def sticker_scale_expr(self, scale_ratio: float, motion: MotionPreset, canvas_width: int, start: float = 0.0, end: float | None = None, speed: float = 1.0) -> tuple[str, str]:
         target_w = max(1, round(canvas_width * min(max(scale_ratio, 0.01), 1.0)))
-        return self.region_scale_expr(str(target_w), motion, start, end)
+        return self.region_scale_expr(str(target_w), motion, start, end, speed=speed)
