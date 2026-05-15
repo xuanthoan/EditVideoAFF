@@ -18,6 +18,7 @@ class OverlayTransform:
     motion: MotionPreset = MotionPreset.NONE
     start_time: float = 0.0
     end_time: float = 0.0
+    speed: float = 1.0
 
     @classmethod
     def from_overlay(cls, overlay: OverlayBase) -> "OverlayTransform":
@@ -29,6 +30,7 @@ class OverlayTransform:
             motion=overlay.motion,
             start_time=overlay.start_time,
             end_time=overlay.end_time,
+            speed=float(getattr(overlay, "motion_speed", 1.0)),
         )
 
     @staticmethod

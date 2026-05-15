@@ -24,10 +24,15 @@ class SceneShufflePipeline:
 
     def apply(self, job: RenderJob, graph: FilterGraph) -> FilterGraph:
         settings = job.state.scene_shuffle
-        scenes = self.detector.detect(job.input_path, settings.sensitivity)
-        segments = Segmenter(settings.fallback_min_seconds, settings.fallback_max_seconds).ensure_segments(
-            scenes, job.input_path
-        )
+        if settings.use_manual_segments and settings.manual_segments:
+            segments = [ShuffleSegment(start, end) for start, end in settings.manual_segments]
+            graph.debug_events.append(f"[SHUFFLE] using_manual_segments={len(segments)}")
+        else:
+            scenes = self.detector.detect(job.input_path, settings.sensitivity)
+            segments = Segmenter(settings.fallback_min_seconds, settings.fallback_max_seconds).ensure_segments(
+                scenes, job.input_path
+            )
+            settings.auto_segments = [(segment.start, segment.end) for segment in segments]
         if settings.random_mode and len(segments) > 1:
             head, tail = segments[0], segments[1:]
             self.random.shuffle(tail)

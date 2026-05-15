@@ -5,12 +5,13 @@ from pathlib import Path
 
 from core.overlays.template_manager import TemplateManager
 from core.overlays.motion_engine import MotionEngine
+from utils.logger import logger
 from core.overlays.transform import OverlayTransform
 from core.overlays.typography_engine import SocialTypographyRenderer
 from core.safe_area_engine import NormalizedRect, SafeAreaEngine
 
 try:
-    from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+    from PySide6.QtCore import QPointF, QRectF, Qt, Signal, QTimer
     from PySide6.QtGui import QColor, QPainter, QPen, QPixmap
     from PySide6.QtWidgets import QLabel
 except ImportError:  # lets non-GUI CI import architecture modules without PySide6 installed
@@ -39,11 +40,15 @@ if QLabel:
             self._typography_renderer = SocialTypographyRenderer()
             self._motion_engine = MotionEngine()
             self._current_time = 0.0
+            self._motion_timer = QTimer(self)
+            self._motion_timer.setInterval(33)
+            self._motion_timer.timeout.connect(self._on_motion_tick)
+            self._motion_timer.start()
             self._text_pixmap_cache_key = None
             self._text_pixmap_cache = None
             self._overlays = {
-                "text": {"active": False, "x": 0.5, "y": 0.35, "w": 260, "h": 90, "text": "", "template": "Orange White", "font_size": 96, "motion": "None", "start": 0.0, "end": 3.0},
-                "sticker": {"active": False, "x": 0.5, "y": 0.55, "w": 120, "h": 120, "pixmap": None, "scale": 0.16, "rotation": 0.0, "motion": "None", "start": 0.0, "end": 3.0},
+                "text": {"active": False, "x": 0.5, "y": 0.35, "w": 260, "h": 90, "text": "", "template": "Orange White", "font_size": 96, "motion": "None", "start": 0.0, "end": 3.0, "speed": 1.0, "strength": 1.0},
+                "sticker": {"active": False, "x": 0.5, "y": 0.55, "w": 120, "h": 120, "pixmap": None, "scale": 0.16, "rotation": 0.0, "motion": "None", "start": 0.0, "end": 3.0, "speed": 1.0, "strength": 1.0},
             }
             self._drag_kind: str | None = None
 
@@ -64,18 +69,18 @@ if QLabel:
                 self._apply_scaled_pixmap()
             self.update()
 
-        def set_text_overlay(self, text: str, template: str, font_size: int, active: bool, motion: str = "None") -> None:
+        def set_text_overlay(self, text: str, template: str, font_size: int, active: bool, motion: str = "None", speed: float = 1.0, strength: float = 1.0, font_ratio: float | None = None) -> None:
             data = self._overlays["text"]
-            data.update({"text": text, "template": template, "font_size": font_size, "active": active, "motion": motion})
+            data.update({"text": text, "template": template, "font_size": font_size, "font_ratio": font_ratio, "active": active, "motion": motion, "speed": speed, "strength": strength})
             self.update()
 
-        def set_sticker_overlay(self, path: Path | None, scale: float, rotation: float, active: bool, motion: str = "None") -> None:
+        def set_sticker_overlay(self, path: Path | None, scale: float, rotation: float, active: bool, motion: str = "None", speed: float = 1.0, strength: float = 1.0) -> None:
             data = self._overlays["sticker"]
             pixmap = data.get("pixmap")
             if path is not None and (data.get("path") != path or pixmap is None):
                 pixmap = QPixmap(str(path))
                 data["path"] = path
-            data.update({"pixmap": pixmap, "scale": scale, "rotation": rotation, "motion": motion, "active": active and pixmap is not None and not pixmap.isNull()})
+            data.update({"pixmap": pixmap, "scale": scale, "rotation": rotation, "motion": motion, "speed": speed, "strength": strength, "active": active and pixmap is not None and not pixmap.isNull()})
             self.update()
 
         def set_playhead_time(self, time_seconds: float) -> None:
@@ -162,18 +167,24 @@ if QLabel:
             if self._snap_y is not None:
                 painter.drawLine(0, self._snap_y, self.width(), self._snap_y)
 
+
+        def _on_motion_tick(self) -> None:
+            if any(self._overlay_visible(item) for item in self._overlays.values()):
+                self.update()
+
         def _draw_text_overlay(self, painter: QPainter) -> None:
             data = self._overlays["text"]
             if not self._overlay_visible(data) or not str(data["text"]).strip():
                 return
             template = self._template_manager.get(str(data["template"]))
             canvas = self._canvas_rect()
-            key = (str(data["text"]), str(data["template"]), int(data["font_size"]), round(canvas.width()), round(canvas.height()))
+            font_px = int(data["font_size"]) if data.get("font_ratio") is None else max(8, round(float(data["font_ratio"]) * canvas.height()))
+            key = (str(data["text"]), str(data["template"]), font_px, round(canvas.width()), round(canvas.height()))
             if key != self._text_pixmap_cache_key or self._text_pixmap_cache is None:
                 image = self._typography_renderer.render_image(
                     str(data["text"]),
                     template,
-                    int(data["font_size"]),
+                    font_px,
                     round(canvas.width()),
                     round(canvas.height()),
                 )
@@ -241,8 +252,11 @@ if QLabel:
             end = float(data.get("end", start))
             local_t = max(0.0, self._current_time - start)
             duration = max(end - start, 0.0)
-            alpha = self._motion_engine.preview_alpha(motion, local_t, duration)
-            scale = self._motion_engine.preview_scale(motion, local_t, duration)
+            speed = float(data.get("speed", 1.0))
+            strength = float(data.get("strength", 1.0))
+            alpha = self._motion_engine.preview_alpha(motion, local_t * speed, duration)
+            scale = self._motion_engine.preview_scale(motion, local_t * speed, duration)
+            logger.debug(f"[PREVIEW_MOTION] type={motion} time={self._current_time:.2f} scale={scale:.3f} opacity={alpha:.3f}")
             if abs(scale - 1.0) < 0.001:
                 return pixmap, alpha
             return pixmap.scaled(
@@ -256,9 +270,10 @@ if QLabel:
             motion = str(data.get("motion", "None"))
             start = float(data.get("start", 0.0))
             local_t = max(0.0, self._current_time - start)
+            speed = float(data.get("speed", 1.0))
             return self._motion_engine.preview_offset(
                 motion,
-                local_t,
+                local_t * speed,
                 canvas.width(),
                 canvas.height(),
                 pixmap.width(),
@@ -271,7 +286,8 @@ if QLabel:
             motion = str(data.get("motion", "None"))
             start = float(data.get("start", 0.0))
             local_t = max(0.0, self._current_time - start)
-            return self._motion_engine.preview_rotation_delta(motion, local_t)
+            speed = float(data.get("speed", 1.0))
+            return self._motion_engine.preview_rotation_delta(motion, local_t * speed)
 
         def _overlay_visible(self, data: dict) -> bool:
             return bool(data["active"]) and float(data.get("start", 0.0)) <= self._current_time <= float(data.get("end", 0.0))

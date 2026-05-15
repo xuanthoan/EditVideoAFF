@@ -9,6 +9,7 @@ try:
     from PySide6.QtWidgets import (
         QButtonGroup,
         QComboBox,
+        QCheckBox,
         QDoubleSpinBox,
         QFileDialog,
         QFormLayout,
@@ -24,7 +25,7 @@ try:
     )
 except ImportError:
     Signal = QColor = QIcon = QPainter = QPen = QPixmap = None
-    QButtonGroup = QComboBox = QDoubleSpinBox = QFileDialog = QFormLayout = QGraphicsOpacityEffect = None
+    QButtonGroup = QCheckBox = QComboBox = QDoubleSpinBox = QFileDialog = QFormLayout = QGraphicsOpacityEffect = None
     QGroupBox = QListWidget = QPushButton = QRadioButton = QSpinBox = QTextEdit = QVBoxLayout = QWidget = None
 
 from core.overlays.template_manager import TemplateManager, TextTemplate
@@ -44,11 +45,14 @@ if QWidget:
         changed = Signal()
         imagePoolSelected = Signal(list)
         stickerSelected = Signal(str)
-        stickerControlsChanged = Signal(float, float, str)
+        stickerControlsChanged = Signal(float, float, str, float)
         textChanged = Signal(str)
+        generateAutoSegmentsClicked = Signal()
+        previewShuffleOrderClicked = Signal()
 
         def __init__(self) -> None:
             super().__init__()
+            self._ui_ready = False
             self.template_manager = TemplateManager()
             self.pipeline_group = QButtonGroup(self)
             self.pipeline_buttons: dict[WorkflowMode, QRadioButton] = {}
@@ -56,8 +60,10 @@ if QWidget:
                 button = QRadioButton(mode.value)
                 self.pipeline_buttons[mode] = button
                 self.pipeline_group.addButton(button)
-                button.toggled.connect(lambda _checked: self.apply_pipeline_ui_state())
-            self.pipeline_buttons[WorkflowMode.PIPELINE_1].setChecked(True)
+            default_button = self.pipeline_buttons[WorkflowMode.PIPELINE_1]
+            default_button.blockSignals(True)
+            default_button.setChecked(True)
+            default_button.blockSignals(False)
 
             self.scene_sensitivity = QSpinBox(); self.scene_sensitivity.setRange(10, 80); self.scene_sensitivity.setValue(30)
             self.fallback_min = QDoubleSpinBox(); self.fallback_min.setRange(1.0, 10.0); self.fallback_min.setValue(3.0); self.fallback_min.setSuffix("s")
@@ -75,20 +81,30 @@ if QWidget:
             self._populate_template_combo()
             self.font_size = QSpinBox(); self.font_size.setRange(18, 260); self.font_size.setValue(96)
             self.motion = QComboBox(); self.motion.addItems(["None", "Fade In", "Fade Out", "Pop", "Bounce", "Scale", "Scale Up", "Scale Down", "Float", "Slide Left", "Slide Right", "Slide Up", "Slide Down", "Pulse", "Shake"])
+            self.motion_speed = QComboBox(); self.motion_speed.addItems(["0.25x", "0.5x", "0.75x", "1.0x", "1.25x", "1.5x", "2.0x", "3.0x"]); self.motion_speed.setCurrentText("1.0x")
+            self.link_motion_speed = QCheckBox("Link Text & Sticker Speed")
+            self.link_motion_speed.setChecked(False)
 
             self.sticker_scale = QDoubleSpinBox(); self.sticker_scale.setRange(0.05, 0.45); self.sticker_scale.setSingleStep(0.01); self.sticker_scale.setDecimals(2); self.sticker_scale.setValue(0.16); self.sticker_scale.setSuffix(" canvas")
             self.sticker_rotation = QSpinBox(); self.sticker_rotation.setRange(-360, 360); self.sticker_rotation.setValue(0); self.sticker_rotation.setSuffix("°")
             self.sticker_motion = QComboBox(); self.sticker_motion.addItems(["None", "Fade In", "Fade Out", "Pop", "Bounce", "Scale", "Scale Up", "Scale Down", "Float", "Slide Left", "Slide Right", "Slide Up", "Slide Down", "Pulse", "Shake", "Rotate Float"])
+            self.sticker_speed = QComboBox(); self.sticker_speed.addItems(["0.25x", "0.5x", "0.75x", "1.0x", "1.25x", "1.5x", "2.0x", "3.0x"]); self.sticker_speed.setCurrentText("1.0x")
 
             sticker_button = QPushButton("Chọn sticker")
             image_button = QPushButton("Chọn ảnh (multi-select)")
+            self.generate_segments_button = QPushButton("Generate Auto Segments")
+            self.preview_shuffle_button = QPushButton("Preview Shuffle Order")
             image_button.clicked.connect(self.pick_images)
             sticker_button.clicked.connect(self.pick_sticker)
+            self.generate_segments_button.clicked.connect(self.generateAutoSegmentsClicked.emit)
+            self.preview_shuffle_button.clicked.connect(self.previewShuffleOrderClicked.emit)
 
             self.text.textChanged.connect(lambda: self.textChanged.emit(self.text.toPlainText()))
             self.sticker_scale.valueChanged.connect(lambda _value: self.emit_sticker_controls())
             self.sticker_rotation.valueChanged.connect(lambda _value: self.emit_sticker_controls())
             self.sticker_motion.currentTextChanged.connect(lambda _text: self.emit_sticker_controls())
+            self.sticker_speed.currentTextChanged.connect(lambda _text: self.emit_sticker_controls())
+            self.motion_speed.currentTextChanged.connect(lambda _text: self.changed.emit())
             self.image_height.valueChanged.connect(lambda _value: self._clamp_overlap())
 
             layout = QVBoxLayout(self)
@@ -102,7 +118,14 @@ if QWidget:
             for group in (self.pipeline_panel, self.shuffle_panel, self.image_panel, self.text_panel, self.sticker_panel):
                 layout.addWidget(group)
             layout.addStretch()
+
+            self._connect_signals()
+            self._ui_ready = True
             self.apply_pipeline_ui_state()
+
+        def _connect_signals(self) -> None:
+            for button in self.pipeline_buttons.values():
+                button.toggled.connect(lambda _checked: self.apply_pipeline_ui_state())
 
         def selected_workflow_mode(self) -> WorkflowMode:
             for mode, button in self.pipeline_buttons.items():
@@ -111,6 +134,16 @@ if QWidget:
             return WorkflowMode.PIPELINE_1
 
         def apply_pipeline_ui_state(self) -> None:
+            if not self._ui_ready:
+                return
+            if not hasattr(self, "shuffle_panel"):
+                return
+            if not hasattr(self, "image_panel"):
+                return
+            if not hasattr(self, "text_panel"):
+                return
+            if not hasattr(self, "sticker_panel"):
+                return
             config = PIPELINE_CONFIG[self.selected_workflow_mode()]
             self._set_panel_state(self.shuffle_panel, config["shuffle"])
             self._set_panel_state(self.image_panel, config["image"])
@@ -177,6 +210,8 @@ if QWidget:
             form.addRow("Sensitivity", self.scene_sensitivity)
             form.addRow("Fallback min", self.fallback_min)
             form.addRow("Fallback max", self.fallback_max)
+            form.addRow(self.generate_segments_button)
+            form.addRow(self.preview_shuffle_button)
             return group
 
         def _image_group(self, button):
@@ -197,6 +232,8 @@ if QWidget:
             form.addRow("Template", self.template)
             form.addRow("Font", self.font_size)
             form.addRow("Motion", self.motion)
+            form.addRow("Speed", self.motion_speed)
+            form.addRow("", self.link_motion_speed)
             return group
 
         def _sticker_group(self, button):
@@ -206,10 +243,14 @@ if QWidget:
             form.addRow("Scale", self.sticker_scale)
             form.addRow("Rotation", self.sticker_rotation)
             form.addRow("Motion", self.sticker_motion)
+            form.addRow("Speed", self.sticker_speed)
             return group
 
         def emit_sticker_controls(self) -> None:
-            self.stickerControlsChanged.emit(float(self.sticker_scale.value()), float(self.sticker_rotation.value()), self.sticker_motion.currentText())
+            self.stickerControlsChanged.emit(float(self.sticker_scale.value()), float(self.sticker_rotation.value()), self.sticker_motion.currentText(), self._speed_value(self.sticker_speed.currentText()))
+
+        def speeds_linked(self) -> bool:
+            return bool(self.link_motion_speed.isChecked())
 
         def pick_images(self) -> None:
             files, _ = QFileDialog.getOpenFileNames(self, "Image pool", "", "Images (*.png *.jpg *.jpeg *.webp)")
@@ -224,6 +265,13 @@ if QWidget:
 
         def _clamp_overlap(self) -> None:
             self.overlap.setMaximum(min(20, self.image_height.value()))
+
+        def _speed_value(self, text: str) -> float:
+            try:
+                return float(str(text).replace("x", ""))
+            except ValueError:
+                return 1.0
+
 else:
     class WorkflowPanel:  # type: ignore[no-redef]
         pass

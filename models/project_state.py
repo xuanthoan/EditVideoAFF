@@ -32,6 +32,15 @@ class SceneShuffleSettings:
     keep_first_segment: bool = True
     fallback_min_seconds: float = 3.0
     fallback_max_seconds: float = 5.0
+    auto_segments: list[tuple[float, float]] = field(default_factory=list)
+    manual_segments: list[tuple[float, float]] = field(default_factory=list)
+
+    def active_segments(self) -> list[tuple[float, float]]:
+        return self.manual_segments if self.manual_segments else self.auto_segments
+
+    @property
+    def use_manual_segments(self) -> bool:
+        return len(self.manual_segments) > 0
 
 
 @dataclass(slots=True)

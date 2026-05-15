@@ -14,10 +14,13 @@ except ImportError:
 
 from core.renderer.batch_renderer import BatchRenderer
 from core.renderer.preview_renderer import PreviewRenderer
+from core.video.scene_detector import SceneDetector
+from core.video.segmenter import Segmenter
 from gui.mini_timeline import MiniTimeline, TimelineOverlayItem
 from gui.preview_canvas import PreviewCanvas
 from gui.queue_panel import QueuePanel
 from gui.workflow_panel import WorkflowPanel
+from core.normalized_layout_engine import NormalizedLayoutEngine
 from models.overlay import MotionPreset
 from models.project_state import ProjectState, WorkflowMode
 from models.sticker_overlay import StickerOverlay
@@ -129,7 +132,11 @@ if QMainWindow:
             self.workflow.template.currentTextChanged.connect(lambda _text: self.update_text_preview())
             self.workflow.font_size.valueChanged.connect(lambda _value: self.update_text_preview())
             self.workflow.motion.currentTextChanged.connect(lambda _text: self.update_text_preview())
+            self.workflow.motion_speed.currentTextChanged.connect(lambda _text: self._on_text_speed_changed())
+            self.workflow.sticker_speed.currentTextChanged.connect(lambda _text: self._on_sticker_speed_changed())
             self.workflow.changed.connect(self.sync_preview_panel_state)
+            self.workflow.generateAutoSegmentsClicked.connect(self.generate_auto_segments)
+            self.workflow.previewShuffleOrderClicked.connect(self.preview_shuffle_order)
             self.preview.overlayMoved.connect(self.set_overlay_position)
             self.timeline.playheadChanged.connect(self.set_playhead_time)
             self.timeline.overlayTimingChanged.connect(self.set_overlay_timing)
@@ -182,16 +189,30 @@ if QMainWindow:
                 float(self.workflow.sticker_scale.value()),
                 float(self.workflow.sticker_rotation.value()),
                 self.workflow.sticker_motion.currentText(),
+                self.workflow._speed_value(self.workflow.sticker_speed.currentText()),
             )
             self.state.overlays.sticker_enabled = True
             self.update_sticker_preview()
             self.refresh_timeline()
             self.append_log(f"[INFO] Đã chọn sticker: {Path(path).name}")
 
-        def set_sticker_controls(self, scale: float, rotation: float, motion: str) -> None:
+        def set_sticker_controls(self, scale: float, rotation: float, motion: str, speed: float = 1.0) -> None:
             self.state.overlays.sticker.scale = scale
             self.state.overlays.sticker.rotation = rotation
             self.state.overlays.sticker.motion = MotionPreset.from_label(motion)
+            self.state.overlays.sticker.motion_speed = speed
+            self.update_sticker_preview()
+
+        def _on_text_speed_changed(self) -> None:
+            if self.workflow.speeds_linked() and self.workflow.sticker_speed.currentText() != self.workflow.motion_speed.currentText():
+                self.workflow.sticker_speed.setCurrentText(self.workflow.motion_speed.currentText())
+            self.update_text_preview()
+            self.update_sticker_preview()
+
+        def _on_sticker_speed_changed(self) -> None:
+            if self.workflow.speeds_linked() and self.workflow.motion_speed.currentText() != self.workflow.sticker_speed.currentText():
+                self.workflow.motion_speed.setCurrentText(self.workflow.sticker_speed.currentText())
+            self.update_text_preview()
             self.update_sticker_preview()
 
         def set_overlay_position(self, kind: str, x: float, y: float) -> None:
@@ -206,7 +227,9 @@ if QMainWindow:
         def update_text_preview(self) -> None:
             self.state.overlays.text.template = self.workflow.template.currentText()
             self.state.overlays.text.font_size = self.workflow.font_size.value()
+            self.state.overlays.text.font_ratio = NormalizedLayoutEngine().normalize_font_size(self.state.overlays.text.font_size)
             self.state.overlays.text.motion = MotionPreset.from_label(self.workflow.motion.currentText())
+            self.state.overlays.text.motion_speed = self.workflow._speed_value(self.workflow.motion_speed.currentText())
             mode = self.workflow.selected_workflow_mode()
             active = mode in {WorkflowMode.PIPELINE_2, WorkflowMode.PIPELINE_3, WorkflowMode.PIPELINE_4} and self.state.overlays.text.active
             self.preview.set_text_overlay(
@@ -215,6 +238,8 @@ if QMainWindow:
                 self.state.overlays.text.font_size,
                 active,
                 self.state.overlays.text.motion.value,
+                self.state.overlays.text.motion_speed,
+                font_ratio=self.state.overlays.text.font_ratio,
             )
             self.preview.set_overlay_timing("text", self.state.overlays.text.start_time, self.state.overlays.text.end_time)
             self.preview.set_overlay_position("text", self.state.overlays.text.x, self.state.overlays.text.y)
@@ -228,6 +253,7 @@ if QMainWindow:
                 self.state.overlays.sticker.rotation,
                 active,
                 self.state.overlays.sticker.motion.value,
+                self.state.overlays.sticker.motion_speed,
             )
             self.preview.set_overlay_timing("sticker", self.state.overlays.sticker.start_time, self.state.overlays.sticker.end_time)
             self.preview.set_overlay_position("sticker", self.state.overlays.sticker.x, self.state.overlays.sticker.y)
@@ -267,6 +293,39 @@ if QMainWindow:
             self.update_text_preview()
             self.update_sticker_preview()
             self.refresh_timeline()
+
+        def generate_auto_segments(self) -> None:
+            current_item = self.queue.list.currentItem() if hasattr(self.queue, "list") else None
+            video_path = Path(current_item.text()) if current_item is not None else None
+            if not video_path:
+                if self.state.videos:
+                    video_path = self.state.videos[0]
+                else:
+                    self.append_log("[WARNING] Chưa có video để generate segments.")
+                    return
+            try:
+                detector = SceneDetector()
+                scenes = detector.detect(Path(video_path), self.state.scene_shuffle.sensitivity)
+                segments = Segmenter(
+                    self.state.scene_shuffle.fallback_min_seconds,
+                    self.state.scene_shuffle.fallback_max_seconds,
+                ).ensure_segments(scenes, Path(video_path))
+                self.state.scene_shuffle.auto_segments = [(segment.start, segment.end) for segment in segments]
+                if not self.state.scene_shuffle.manual_segments:
+                    self.append_log(f"[INFO] Generated {len(segments)} auto segments.")
+                else:
+                    self.append_log("[INFO] Auto segments generated (manual mode currently active).")
+            except Exception as exc:
+                self.append_log(f"[ERROR] Generate auto segments failed: {exc}")
+
+        def preview_shuffle_order(self) -> None:
+            segments = self.state.scene_shuffle.active_segments()
+            if not segments:
+                self.append_log("[INFO] Chưa có segments. Bấm Generate Auto Segments trước.")
+                return
+            order = ", ".join(f"{idx + 1}:{start:.2f}-{end:.2f}" for idx, (start, end) in enumerate(segments))
+            mode = "MANUAL" if self.state.scene_shuffle.use_manual_segments else "AUTO"
+            self.append_log(f"[INFO] Preview Shuffle Order ({mode}): {order}")
 
         def _overlay_by_key(self, key: str):
             if key == "text":
@@ -360,10 +419,12 @@ if QMainWindow:
             self.state.overlays.text.template = self.workflow.template.currentText()
             self.state.overlays.text.font_size = self.workflow.font_size.value()
             self.state.overlays.text.motion = MotionPreset.from_label(self.workflow.motion.currentText())
+            self.state.overlays.text.motion_speed = self.workflow._speed_value(self.workflow.motion_speed.currentText())
             self.set_sticker_controls(
                 float(self.workflow.sticker_scale.value()),
                 float(self.workflow.sticker_rotation.value()),
                 self.workflow.sticker_motion.currentText(),
+                self.workflow._speed_value(self.workflow.sticker_speed.currentText()),
             )
 
         def append_log(self, message: str) -> None:

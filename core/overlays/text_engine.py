@@ -7,6 +7,7 @@ from pathlib import Path
 from core.overlays.motion_engine import MotionEngine
 from core.overlays.template_manager import TemplateManager
 from core.overlays.typography_engine import SocialTypographyRenderer
+from utils.logger import logger
 from models.text_overlay import TextOverlay
 
 
@@ -26,12 +27,12 @@ class TextEngine:
     ) -> tuple[str, str]:
         out = f"text_v{suffix}"
         prepared = f"text_src{suffix}"
-        x, y, enable = self.motion.position_expr(overlay.x, overlay.y, overlay.motion, overlay.start_time, overlay.end_time)
-        width_expr, height_expr = self.motion.region_scale_expr("iw", overlay.motion, overlay.start_time, overlay.end_time)
-        alpha_filter = self.motion.alpha_filter(overlay.motion, overlay.start_time, overlay.end_time)
+        x, y, enable = self.motion.position_expr(overlay.x, overlay.y, overlay.motion, overlay.start_time, overlay.end_time, overlay.motion_speed)
+        width_expr, height_expr = self.motion.region_scale_expr("iw", overlay.motion, overlay.start_time, overlay.end_time, overlay.motion_speed)
+        alpha_filter = self.motion.alpha_filter(overlay.motion, overlay.start_time, overlay.end_time, overlay.motion_speed)
         chain = (
-            f"[{text_label}]scale=w='{width_expr}':h='{height_expr}':eval=frame{alpha_filter}[{prepared}];"
-            f"[{video_label}][{prepared}]overlay=x={x}:y={y}:enable='{enable}'[{out}]"
+            f"[{text_label}]scale=w='{width_expr}':h='{height_expr}'{alpha_filter}[{prepared}];"
+            f"[{video_label}][{prepared}]overlay=x={x}:y={y}:eval=frame:enable='{enable}'[{out}]"
         )
         return chain, out
 
@@ -43,11 +44,18 @@ class TextEngine:
         temp_files: list[Path] | None = None,
     ) -> Path:
         template = self.templates.get(overlay.template)
-        key = (overlay.text, overlay.template, overlay.font_size, canvas_width, canvas_height)
+        computed_font_size = overlay.effective_font_size(canvas_height)
+        logger.debug(
+            "[NORMALIZED] font_ratio=%.4f output_height=%d computed_font_size=%d",
+            overlay.font_ratio,
+            canvas_height,
+            computed_font_size,
+        )
+        key = (overlay.text, overlay.template, computed_font_size, canvas_width, canvas_height)
         path = self._asset_cache.get(key)
         if path is None or not path.exists():
             path = self._new_asset_path()
-            self.typography.render_png(path, overlay.text, template, overlay.font_size, canvas_width, canvas_height)
+            self.typography.render_png(path, overlay.text, template, computed_font_size, canvas_width, canvas_height)
             self._asset_cache[key] = path
         if temp_files is not None and path not in temp_files:
             temp_files.append(path)
